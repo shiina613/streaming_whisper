@@ -193,3 +193,5 @@ Contributions to SimulStreaming are welcome.
 
 [Dominik Macháček](https://ufal.mff.cuni.cz/dominik-machacek/), machacek@ufal.mff.cuni.cz
 
+#   s t r e a m i n g _ w h i s p e r  
+ 
