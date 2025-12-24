@@ -1,0 +1,24 @@
+python simulstreaming_whisper_server.py ... | findstr /R /C:"^Output:"
+
+python simulstreaming_whisper_server.py --model_path small --lan auto --task transcribe --port 43001
+
+python send_mic_to_server.py
+
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr /R /C:"^Output:"
+
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
+
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr "INFO    Output:"
+
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr /R /C:"^INFO    Output:"
+
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr "Output:"
+
+chcp 65001
+set PYTHONIOENCODING=utf-8
+
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 2>&1 | findstr "Output:"
+
+pip install fastapi uvicorn
+
+python simulstreaming_whisper_server.py --lan vi --task transcribe --port 43001

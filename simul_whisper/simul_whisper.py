@@ -14,7 +14,9 @@ from .whisper.decoding import GreedyDecoder, BeamSearchDecoder, SuppressTokens, 
 from .beam import BeamPyTorchInference
 from .eow_detection import fire_at_boundary, load_cif
 import os
-
+import threading
+import websockets
+import asyncio
 from token_buffer import TokenBuffer
 
 import numpy as np
@@ -597,7 +599,23 @@ class PaddedAlignAttWhisper:
         # TODO: test if this is redundant or not
 #        ret = ret[ret<DEC_PAD]
 
-        logger.info(f"Output: {self.tokenizer.decode(new_hypothesis)}")
+        output_text = self.tokenizer.decode(new_hypothesis)
+        logger.info(f"Output: {output_text}")
+        # Gửi output qua WebSocket như một client
+        try:
+            async def send_ws(text):
+                try:
+                    async with websockets.connect('ws://127.0.0.1:8765') as ws:
+                        await ws.send(text)
+                except Exception as e:
+                    logger.debug(f"WebSocket send error: {e}")
+
+            def run_ws(text):
+                asyncio.run(send_ws(text))
+
+            threading.Thread(target=run_ws, args=(output_text,), daemon=True).start()
+        except Exception as e:
+            logger.debug(f"WebSocket send error (outer): {e}")
         
         self._clean_cache()
 
