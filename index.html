@@ -1,28 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <title>SimulStreaming Live Text</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        #output { border: 1px solid #ccc; padding: 20px; min-height: 200px; font-size: 1.2em; white-space: pre-wrap; }
-    </style>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Thông tin cuộc họp</title>
+	<script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h2>SimulStreaming Output</h2>
-    <div id="output"></div>
-    <script>
-        const outputDiv = document.getElementById('output');
-        const ws = new WebSocket('ws://' + "127.0.0.1" + ':8765');
-        ws.onmessage = function(event) {
-            outputDiv.textContent += event.data;
-        };
-        ws.onopen = function() {
-            outputDiv.textContent += '\n[WebSocket connected]\n';
-        };
-        ws.onclose = function() {
-            outputDiv.textContent += '\n[WebSocket disconnected]\n';
-        };
-    </script>
+</head>
+<body class="min-h-screen flex items-center justify-center relative overflow-hidden">
+	<div class="absolute inset-0 -z-10">
+		<img src="bg.jpg" alt="background" class="w-full h-full object-cover object-center blur-[2px] brightness-85 scale-105 transition-transform duration-1000" />
+		<div class="absolute inset-0 bg-gradient-to-br from-blue-900/60 via-blue-700/30 to-indigo-900/60"></div>
+	</div>
+	<div class="backdrop-blur-md bg-white/80 p-10 rounded-3xl shadow-2xl w-full max-w-lg border border-white/40 animate-fade-in">
+		<h2 class="text-3xl font-extrabold text-center mb-8 text-blue-800 drop-shadow-lg tracking-wide">Thông tin cuộc họp</h2>
+		<form id="meetingForm" class="space-y-6">
+			<div>
+				<label for="meetingName" class="block mb-2 font-semibold text-gray-800">Tên cuộc họp</label>
+				<input type="text" id="meetingName" name="meetingName" required class="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white/90 shadow-sm transition">
+			</div>
+			<div>
+				<label for="meetingCode" class="block mb-2 font-semibold text-gray-800">Mã cuộc họp</label>
+				<input type="text" id="meetingCode" name="meetingCode" required class="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white/90 shadow-sm transition">
+			</div>
+			<div>
+				<label for="hostName" class="block mb-2 font-semibold text-gray-800">Tên chủ tọa</label>
+				<input type="text" id="hostName" name="hostName" required class="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white/90 shadow-sm transition">
+			</div>
+			<div>
+				<label for="secretaryName" class="block mb-2 font-semibold text-gray-800">Tên thư ký</label>
+				<input type="text" id="secretaryName" name="secretaryName" required class="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white/90 shadow-sm transition">
+			</div>
+			<button type="submit" class="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-lg shadow-lg transition-all duration-200 text-lg tracking-wide">Bắt đầu cuộc họp</button>
+		</form>
+	</div>
+	<style>
+		@keyframes fade-in {
+			0% { opacity: 0; transform: translateY(40px) scale(0.98); }
+			100% { opacity: 1; transform: translateY(0) scale(1); }
+		}
+		.animate-fade-in {
+			animation: fade-in 1.2s cubic-bezier(.4,0,.2,1) both;
+		}
+	</style>
+	<script>
+		document.getElementById('meetingForm').addEventListener('submit', function(e) {
+			e.preventDefault();
+			// Lưu thông tin vào localStorage
+			const meetingInfo = {
+				meetingName: document.getElementById('meetingName').value,
+				meetingCode: document.getElementById('meetingCode').value,
+				hostName: document.getElementById('hostName').value,
+				secretaryName: document.getElementById('secretaryName').value
+			};
+			localStorage.setItem('meetingInfo', JSON.stringify(meetingInfo));
+			window.location.href = 'ccpage.html';
+		});
+	</script>
 </body>
 </html>

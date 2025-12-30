@@ -19,7 +19,7 @@ def simulwhisper_args(parser):
                         "If beams > 1 and greedy: invalid.")
 
     group = parser.add_argument_group('Audio buffer')
-    group.add_argument('--audio_max_len', type=float, default=30.0, 
+    group.add_argument('--audio_max_len', type=float, default=5.0, 
                         help='Max length of the audio buffer, in seconds.')
     group.add_argument('--audio_min_len', type=float, default=0.0, 
                         help='Skip processing if the audio buffer is shorter than this length, in seconds. Useful when the --min-chunk-size is small.')

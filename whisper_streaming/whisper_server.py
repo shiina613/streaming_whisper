@@ -105,8 +105,8 @@ class ServerProcessor:
             o = self.online_asr_proc.process_iter()
             try:
                 self.send_result(o)
-            except BrokenPipeError:
-                logger.info("broken pipe -- connection closed?")
+            except (BrokenPipeError, ConnectionResetError):
+                logger.info("connection closed by client")
                 break
 
 #        o = online.finish()  # this should be working
@@ -140,7 +140,7 @@ def main_server(factory, add_args):
     # setting whisper object by args 
 
 
-    asr, online = asr_factory(args, factory)
+    asr, _ = asr_factory(args, factory)
     if args.vac:
         min_chunk = args.vac_chunk_size
     else:
@@ -161,14 +161,15 @@ def main_server(factory, add_args):
         logger.warning(msg)
 
     # server loop
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((args.host, args.port))
-        s.listen(1)
+        s.listen(5)
         logger.info('Listening on'+str((args.host, args.port)))
         while True:
             conn, addr = s.accept()
             logger.info('Connected to client on {}'.format(addr))
+            # Tạo online_asr_proc mới cho mỗi client
+            _, online = asr_factory(args, factory)
             connection = Connection(conn)
             proc = ServerProcessor(connection, online, min_chunk)
             proc.process()

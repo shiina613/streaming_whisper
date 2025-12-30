@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+	<meta charset="UTF-8">
+	<title>SimulStreaming Live Text</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<style>
+		.cc-scrollbar::-webkit-scrollbar {
+			width: 8px;
+			background: #e0e7ef;
+		}
+		.cc-scrollbar::-webkit-scrollbar-thumb {
+			background: #a5b4fc;
+			border-radius: 6px;
+		}
+	</style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-100 via-indigo-100 to-blue-200 flex items-center justify-center py-2">
+	<div class="w-[95vw] max-w-[1500px] bg-white/90 rounded-3xl shadow-2xl p-2 md:p-8 border border-blue-100 relative overflow-hidden max-h-[92vh] overflow-auto">
+		<div class="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-br from-blue-300/40 to-indigo-400/30 rounded-full blur-2xl z-0"></div>
+		<div class="absolute -bottom-10 -left-10 w-40 h-40 bg-gradient-to-tr from-indigo-200/40 to-blue-400/30 rounded-full blur-2xl z-0"></div>
+		<div class="flex flex-col md:flex-row gap-6 md:gap-8 h-full z-10 relative min-h-[70vh]">
+			<!-- Thông tin cuộc họp bên trái -->
+			   <div class="md:w-1/4 w-full flex flex-col justify-between md:items-start items-start">
+				<div>
+					<h2 class="text-3xl font-extrabold text-blue-900 mb-6 text-center md:text-left tracking-wider drop-shadow-lg">Thông tin cuộc họp</h2>
+					<div id="meetingInfo" class="space-y-4 mb-8">
+						   <div class="bg-blue-50/60 rounded-lg px-4 py-3 shadow-sm ml-0 md:ml-0"><span class="font-semibold text-gray-700">Tên cuộc họp:</span> <span id="infoMeetingName" class="text-blue-700"></span></div>
+						   <div class="bg-blue-50/60 rounded-lg px-4 py-3 shadow-sm ml-0 md:ml-0"><span class="font-semibold text-gray-700">Mã cuộc họp:</span> <span id="infoMeetingCode" class="text-blue-700"></span></div>
+						   <div class="bg-blue-50/60 rounded-lg px-4 py-3 shadow-sm ml-0 md:ml-0"><span class="font-semibold text-gray-700">Chủ tọa:</span> <span id="infoHostName" class="text-blue-700"></span></div>
+						   <div class="bg-blue-50/60 rounded-lg px-4 py-3 shadow-sm ml-0 md:ml-0"><span class="font-semibold text-gray-700">Thư ký:</span> <span id="infoSecretaryName" class="text-blue-700"></span></div>
+					</div>
+				</div>
+				   <div class="mb-4 w-full">
+					   <label for="micSelect" class="block font-semibold text-gray-700 mb-2">Chọn micro sử dụng:</label>
+					   <select id="micSelect" class="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white text-gray-900"></select>
+				   </div>
+				   <div class="flex flex-row gap-3 justify-center md:justify-start mb-4 md:mb-0">
+					   <button id="meetingBtn" class="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-all duration-200 text-base tracking-wide min-w-[140px]">Bắt đầu cuộc họp</button>
+					   <button id="micBtn" class="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all duration-200 text-base tracking-wide min-w-[110px]">Bật mic</button>
+				</div>
+			</div>
+			<!-- Ô textbox CC bên phải -->
+			   <div class="md:w-3/4 w-full flex flex-col">
+				   <textarea id="output" readonly class="cc-scrollbar w-full flex-1 min-h-[500px] h-[75vh] p-8 border-2 border-blue-300 rounded-2xl bg-white/90 text-xl font-mono text-gray-900 shadow-inner resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 transition" style="max-height:90vh;"></textarea>
+			</div>
+		</div>
+	</div>
+	   <script>
+		   // Lấy danh sách micro và populate vào select
+		   async function loadMicrophones() {
+			   if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+			   try {
+				   const devices = await navigator.mediaDevices.enumerateDevices();
+				   const micSelect = document.getElementById('micSelect');
+				   micSelect.innerHTML = '';
+				   let found = false;
+				   devices.forEach(device => {
+					   if (device.kind === 'audioinput') {
+						   const option = document.createElement('option');
+						   option.value = device.deviceId;
+						   option.textContent = device.label || `Microphone ${micSelect.length + 1}`;
+						   micSelect.appendChild(option);
+						   found = true;
+					   }
+				   });
+				   if (!found) {
+					   const option = document.createElement('option');
+					   option.value = '';
+					   option.textContent = 'Không tìm thấy micro';
+					   micSelect.appendChild(option);
+				   }
+			   } catch (e) {
+				   const micSelect = document.getElementById('micSelect');
+				   micSelect.innerHTML = '<option value="">Không thể truy cập thiết bị</option>';
+			   }
+		   }
+		   window.addEventListener('DOMContentLoaded', loadMicrophones);
+		// Hiển thị thông tin cuộc họp từ localStorage
+		const info = JSON.parse(localStorage.getItem('meetingInfo') || '{}');
+		document.getElementById('infoMeetingName').textContent = info.meetingName || '';
+		document.getElementById('infoMeetingCode').textContent = info.meetingCode || '';
+		document.getElementById('infoHostName').textContent = info.hostName || '';
+		document.getElementById('infoSecretaryName').textContent = info.secretaryName || '';
+
+		const outputArea = document.getElementById('output');
+		const meetingBtn = document.getElementById('meetingBtn');
+		const micBtn = document.getElementById('micBtn');
+		let ws;
+		let mediaRecorder;
+		let audioStream;
+		let meetingStarted = false;
+		let micOn = false;
+
+		function connectWebSocket() {
+			ws = new WebSocket('ws://' + "127.0.0.1" + ':8765');
+			ws.onmessage = function(event) {
+				outputArea.value += event.data;
+				setTimeout(() => {
+					outputArea.scrollTop = outputArea.scrollHeight;
+				}, 10);
+			};
+			ws.onopen = function() {
+				outputArea.value += '\n[WebSocket connected]\n';
+				setTimeout(() => {
+					outputArea.scrollTop = outputArea.scrollHeight;
+				}, 10);
+			};
+			ws.onclose = function() {
+				outputArea.value += '\n[WebSocket disconnected]\n';
+				setTimeout(() => {
+					outputArea.scrollTop = outputArea.scrollHeight;
+				}, 10);
+			};
+		}
+
+		meetingBtn.onclick = async function() {
+			if (!meetingStarted) {
+				// Bắt đầu cuộc họp
+				connectWebSocket();
+				meetingStarted = true;
+				meetingBtn.textContent = 'Kết thúc cuộc họp';
+				meetingBtn.classList.remove('bg-green-600','hover:bg-green-700');
+				meetingBtn.classList.add('bg-red-600','hover:bg-red-700');
+				outputArea.value += '\n[Cuộc họp đã bắt đầu]\n';
+			} else {
+				// Kết thúc cuộc họp
+				if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+					mediaRecorder.stop();
+					outputArea.value += '\n[Ghi âm dừng]\n';
+				}
+				if (audioStream) {
+					audioStream.getTracks().forEach(track => track.stop());
+				}
+				if (ws) {
+					ws.close();
+				}
+				meetingStarted = false;
+				micOn = false;
+				meetingBtn.textContent = 'Bắt đầu cuộc họp';
+				meetingBtn.classList.remove('bg-red-600','hover:bg-red-700');
+				meetingBtn.classList.add('bg-green-600','hover:bg-green-700');
+				micBtn.textContent = 'Bật mic';
+				micBtn.classList.remove('bg-red-600','hover:bg-red-700');
+				micBtn.classList.add('bg-blue-600','hover:bg-blue-700');
+				micBtn.disabled = true;
+				outputArea.value += '\n[Cuộc họp đã kết thúc]\n';
+			}
+			micBtn.disabled = !meetingStarted;
+		};
+
+		micBtn.onclick = async function() {
+			if (!meetingStarted) return;
+			if (!micOn) {
+				// Bật mic
+				try {
+					audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+					mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+					mediaRecorder.ondataavailable = function(e) {
+						if (ws && ws.readyState === WebSocket.OPEN) {
+							ws.send(e.data);
+						}
+					};
+					mediaRecorder.start(250); // gửi mỗi 250ms
+					micOn = true;
+					micBtn.textContent = 'Tắt mic';
+					micBtn.classList.remove('bg-blue-600','hover:bg-blue-700');
+					micBtn.classList.add('bg-red-600','hover:bg-red-700');
+					outputArea.value += '\n[Mic đã bật]\n';
+					setTimeout(() => {
+						outputArea.scrollTop = outputArea.scrollHeight;
+					}, 10);
+				} catch (err) {
+					outputArea.value += '\nLỗi truy cập micro: ' + err + '\n';
+					setTimeout(() => {
+						outputArea.scrollTop = outputArea.scrollHeight;
+					}, 10);
+				}
+			} else {
+				// Tắt mic
+				if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+					mediaRecorder.stop();
+					outputArea.value += '\n[Mic đã tắt]\n';
+					setTimeout(() => {
+						outputArea.scrollTop = outputArea.scrollHeight;
+					}, 10);
+				}
+				if (audioStream) {
+					audioStream.getTracks().forEach(track => track.stop());
+				}
+				micOn = false;
+				micBtn.textContent = 'Bật mic';
+				micBtn.classList.remove('bg-red-600','hover:bg-red-700');
+				micBtn.classList.add('bg-blue-600','hover:bg-blue-700');
+			}
+		};
+
+		// Khởi tạo trạng thái ban đầu
+		micBtn.disabled = true;
+	</script>
+</body>
+</html>

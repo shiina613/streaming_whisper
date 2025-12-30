@@ -31,7 +31,7 @@ def processor_args(parser):
     parser: argparse.ArgumentParser object
     """
     group = parser.add_argument_group("WhisperStreaming processor arguments (shared for simulation from file and for the server)")
-    group.add_argument('--min-chunk-size', type=float, default=1.2, 
+    group.add_argument('--min-chunk-size', type=float, default=1, 
                         help='Minimum audio chunk size in seconds. It waits up to this time to do processing. If the processing takes shorter '
                         'time, it waits, otherwise it processes the whole segment that was received by this time.')
 
