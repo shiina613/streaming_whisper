@@ -1,3 +1,4 @@
 # Ignore model weight files
 large-v3.pt
 small.pt
+tiny.pt
