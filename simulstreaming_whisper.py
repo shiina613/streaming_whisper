@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def simulwhisper_args(parser):
     group = parser.add_argument_group('Whisper arguments')
-    group.add_argument('--model_path', type=str, default='./large-v3.pt', 
+    group.add_argument('--model_path', type=str, default='./tiny.pt', 
                         help='The file path to the Whisper .pt model. If not present on the filesystem, the model is downloaded automatically.')
     group.add_argument("--beams","-b", type=int, default=1, help="Number of beams for beam search decoding. If 1, GreedyDecoder is used.")
     group.add_argument("--decoder",type=str, default=None, help="Override automatic selection of beam or greedy decoder. "

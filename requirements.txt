@@ -1,11 +1,50 @@
+
+
+# =============================
+# HƯỚNG DẪN CÀI ĐẶT TORCH HỖ TRỢ GPU (CUDA) CHI TIẾT
+#
+# 1. Xác định phiên bản CUDA phù hợp với máy bạn:
+#    a. Kiểm tra card NVIDIA:
+#       - Nhấn Win + X → Device Manager → Display adapters → Xem tên card (ví dụ: NVIDIA RTX 3060)
+#    b. Kiểm tra driver đã cài:
+#       - Nhấn chuột phải desktop → NVIDIA Control Panel → System Information → Driver Version
+#    c. Kiểm tra phiên bản CUDA hỗ trợ:
+#       - Vào https://developer.nvidia.com/cuda-gpus, tìm tên card, xem cột Compute Capability (>=3.5 là được)
+#       - Thường dùng CUDA 11.8 hoặc 12.1 (nên chọn bản mới nhất mà PyTorch hỗ trợ)
+#
+# 2. Lấy lệnh cài đặt phù hợp:
+#    a. Truy cập https://pytorch.org/get-started/locally/
+#    b. Chọn:
+#       - PyTorch Build: Stable
+#       - Your OS: Windows
+#       - Package: pip
+#       - Language: Python
+#       - Compute Platform: CUDA 12.1 (hoặc 11.8 nếu máy bạn cũ hơn)
+#    c. Copy lệnh pip được gợi ý (ví dụ cho CUDA 12.1):
+#       pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+
+##### pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+
+
+# 3. Cài đặt:
+#    a. Mở Anaconda Prompt hoặc terminal trong môi trường ảo đã kích hoạt
+#    b. Dán lệnh pip ở trên và chạy
+#
+# 4. Kiểm tra GPU đã nhận:
+#    a. Chạy lệnh:
+#       python -c "import torch; print(torch.cuda.is_available())"
+#    b. Nếu trả về True là thành công
+#    c. Nếu có lỗi OMP/libiomp5md.dll, thêm dòng sau vào đầu script hoặc terminal:
+#       import os; os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+#       hoặc trên terminal: $env:KMP_DUPLICATE_LIB_OK="TRUE"
+#
+# 5. Sau đó mới chạy:
+#    pip install -r requirements.txt
+# =============================
+
 # dependency from WhisperStreaming:
 librosa
-
-# for using Silero VAD with WhisperStreaming, torchaudio is needed
-torchaudio
-
-# from SimulWhisper
-torch
 
 # from Whisper
 tqdm

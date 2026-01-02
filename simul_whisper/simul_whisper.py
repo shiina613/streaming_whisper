@@ -13,10 +13,6 @@ from .whisper.timing import median_filter
 from .whisper.decoding import GreedyDecoder, BeamSearchDecoder, SuppressTokens, detect_language
 from .beam import BeamPyTorchInference
 from .eow_detection import fire_at_boundary, load_cif
-import os
-import threading
-import websockets
-import asyncio
 from token_buffer import TokenBuffer
 
 import numpy as np
@@ -43,7 +39,7 @@ class PaddedAlignAttWhisper:
         model_name = os.path.basename(cfg.model_path).replace(".pt", "")
         model_path = os.path.dirname(os.path.abspath(cfg.model_path))
         self.model = load_model(name=model_name, download_root=model_path)
-
+        print(f"[INFO] Speech-to-text model is running on device: {self.model.device}")
         logger.info(f"Model dimensions: {self.model.dims}")
 
         self.decode_options = DecodingOptions(
@@ -601,21 +597,6 @@ class PaddedAlignAttWhisper:
 
         output_text = self.tokenizer.decode(new_hypothesis)
         logger.info(f"Output: {output_text}")
-        # Gửi output qua WebSocket như một client
-        try:
-            async def send_ws(text):
-                try:
-                    async with websockets.connect('ws://127.0.0.1:8765') as ws:
-                        await ws.send(text)
-                except Exception as e:
-                    logger.debug(f"WebSocket send error: {e}")
-
-            def run_ws(text):
-                asyncio.run(send_ws(text))
-
-            threading.Thread(target=run_ws, args=(output_text,), daemon=True).start()
-        except Exception as e:
-            logger.debug(f"WebSocket send error (outer): {e}")
         
         self._clean_cache()
 

@@ -122,8 +122,8 @@ def main_server(factory, add_args):
     parser = argparse.ArgumentParser()
 
     # server options
-    parser.add_argument("--host", type=str, default='localhost')
-    parser.add_argument("--port", type=int, default=43007)
+    parser.add_argument("--host", type=str, default='127.0.0.1')
+    parser.add_argument("--port", type=int, default=43001)
     parser.add_argument("--warmup-file", type=str, dest="warmup_file", 
             help="The path to a speech audio wav file to warm up Whisper so that the very first chunk processing is fast. It can be e.g. "
             "https://github.com/ggerganov/whisper.cpp/raw/master/samples/jfk.wav .")
@@ -163,16 +163,20 @@ def main_server(factory, add_args):
     # server loop
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((args.host, args.port))
-        s.listen(5)
+        s.listen(1)
         logger.info('Listening on'+str((args.host, args.port)))
         while True:
-            conn, addr = s.accept()
-            logger.info('Connected to client on {}'.format(addr))
-            # Tạo online_asr_proc mới cho mỗi client
-            _, online = asr_factory(args, factory)
-            connection = Connection(conn)
-            proc = ServerProcessor(connection, online, min_chunk)
-            proc.process()
-            conn.close()
-            logger.info('Connection to client closed')
-    logger.info('Connection closed, terminating.')
+            try:
+                conn, addr = s.accept()
+                logger.info('Connected to client on {}'.format(addr))
+                # Tạo online_asr_proc mới cho mỗi client
+                _, online = asr_factory(args, factory)
+                connection = Connection(conn)
+                proc = ServerProcessor(connection, online, min_chunk)
+                proc.process()
+                conn.close()
+                logger.info('Connection to client closed')
+            except Exception as e:
+                logger.error(f'Error in main_server loop: {e}')
+                continue
+        # Không kết thúc tiến trình, luôn chờ client mới

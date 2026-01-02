@@ -88,7 +88,7 @@
 		const micBtn = document.getElementById('micBtn');
 		let ws;
 		let mediaRecorder;
-		let audioStream;
+		let audioStream;  // Giữ stream trong suốt cuộc họp
 		let meetingStarted = false;
 		let micOn = false;
 
@@ -101,38 +101,69 @@
 				}, 10);
 			};
 			ws.onopen = function() {
-				outputArea.value += '\n[WebSocket connected]\n';
+				outputArea.value += '[Đã kết nối server]\n';
+				// Gửi NEW_MEETING để clear buffer từ cuộc họp cũ
+				ws.send("NEW_MEETING");
 				setTimeout(() => {
 					outputArea.scrollTop = outputArea.scrollHeight;
 				}, 10);
 			};
 			ws.onclose = function() {
-				outputArea.value += '\n[WebSocket disconnected]\n';
+				outputArea.value += '[Đã ngắt kết nối server]\n';
 				setTimeout(() => {
 					outputArea.scrollTop = outputArea.scrollHeight;
 				}, 10);
 			};
 		}
 
+		async function requestMicPermission() {
+			// Xin quyền mic 1 lần khi bắt đầu cuộc họp
+			try {
+				const selectedDeviceId = document.getElementById('micSelect').value;
+				const constraints = selectedDeviceId 
+					? { audio: { deviceId: { exact: selectedDeviceId } } }
+					: { audio: true };
+				audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+				return true;
+			} catch (err) {
+				outputArea.value += 'Lỗi truy cập micro: ' + err + '\n';
+				return false;
+			}
+		}
+
 		meetingBtn.onclick = async function() {
 			if (!meetingStarted) {
+				// Xin quyền mic trước khi bắt đầu cuộc họp
+				const hasPermission = await requestMicPermission();
+				if (!hasPermission) {
+					outputArea.value += '[Không thể bắt đầu cuộc họp - cần quyền truy cập micro]\n';
+					return;
+				}
+				
 				// Bắt đầu cuộc họp
 				connectWebSocket();
 				meetingStarted = true;
 				meetingBtn.textContent = 'Kết thúc cuộc họp';
 				meetingBtn.classList.remove('bg-green-600','hover:bg-green-700');
 				meetingBtn.classList.add('bg-red-600','hover:bg-red-700');
-				outputArea.value += '\n[Cuộc họp đã bắt đầu]\n';
+				outputArea.value = ''; // Clear output khi bắt đầu cuộc họp mới
+				outputArea.value += '[Cuộc họp đã bắt đầu]\n';
 			} else {
 				// Kết thúc cuộc họp
-				if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-					mediaRecorder.stop();
-					outputArea.value += '\n[Ghi âm dừng]\n';
+				if (micOn) {
+					// Tắt mic trước nếu đang bật
+					stopRecording();
 				}
+				// Dừng audio stream
 				if (audioStream) {
 					audioStream.getTracks().forEach(track => track.stop());
+					audioStream = null;
 				}
-				if (ws) {
+				// Gửi signal END_MEETING để clear buffer
+				if (ws && ws.readyState === WebSocket.OPEN) {
+					ws.send("END_MEETING");
+					// Đợi một chút để server xử lý
+					await new Promise(resolve => setTimeout(resolve, 300));
 					ws.close();
 				}
 				meetingStarted = false;
@@ -144,54 +175,58 @@
 				micBtn.classList.remove('bg-red-600','hover:bg-red-700');
 				micBtn.classList.add('bg-blue-600','hover:bg-blue-700');
 				micBtn.disabled = true;
-				outputArea.value += '\n[Cuộc họp đã kết thúc]\n';
+				outputArea.value += '[Cuộc họp đã kết thúc]\n';
 			}
 			micBtn.disabled = !meetingStarted;
 		};
 
+		function stopRecording() {
+			// Chỉ dừng MediaRecorder, KHÔNG dừng audioStream
+			if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+				mediaRecorder.stop();
+			}
+			micOn = false;
+			micBtn.textContent = 'Bật mic';
+			micBtn.classList.remove('bg-red-600','hover:bg-red-700');
+			micBtn.classList.add('bg-blue-600','hover:bg-blue-700');
+			outputArea.value += '[Mic đã tắt - đang xử lý audio tồn đọng...]\n';
+			setTimeout(() => {
+				outputArea.scrollTop = outputArea.scrollHeight;
+			}, 10);
+		}
+
 		micBtn.onclick = async function() {
 			if (!meetingStarted) return;
 			if (!micOn) {
-				// Bật mic
-				try {
-					audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-					mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
-					mediaRecorder.ondataavailable = function(e) {
-						if (ws && ws.readyState === WebSocket.OPEN) {
-							ws.send(e.data);
-						}
-					};
-					mediaRecorder.start(250); // gửi mỗi 250ms
-					micOn = true;
-					micBtn.textContent = 'Tắt mic';
-					micBtn.classList.remove('bg-blue-600','hover:bg-blue-700');
-					micBtn.classList.add('bg-red-600','hover:bg-red-700');
-					outputArea.value += '\n[Mic đã bật]\n';
-					setTimeout(() => {
-						outputArea.scrollTop = outputArea.scrollHeight;
-					}, 10);
-				} catch (err) {
-					outputArea.value += '\nLỗi truy cập micro: ' + err + '\n';
-					setTimeout(() => {
-						outputArea.scrollTop = outputArea.scrollHeight;
-					}, 10);
+				// Bật mic - sử dụng audioStream đã có
+				if (!audioStream) {
+					outputArea.value += '[Lỗi: Không có audio stream]\n';
+					return;
 				}
+				
+				// Gửi signal MIC_ON để đảm bảo có ffmpeg process
+				if (ws && ws.readyState === WebSocket.OPEN) {
+					ws.send("MIC_ON");
+				}
+				
+				mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+				mediaRecorder.ondataavailable = function(e) {
+					if (ws && ws.readyState === WebSocket.OPEN) {
+						ws.send(e.data);
+					}
+				};
+				mediaRecorder.start(250); // gửi mỗi 250ms
+				micOn = true;
+				micBtn.textContent = 'Tắt mic';
+				micBtn.classList.remove('bg-blue-600','hover:bg-blue-700');
+				micBtn.classList.add('bg-red-600','hover:bg-red-700');
+				outputArea.value += '[Mic đã bật]\n';
+				setTimeout(() => {
+					outputArea.scrollTop = outputArea.scrollHeight;
+				}, 10);
 			} else {
 				// Tắt mic
-				if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-					mediaRecorder.stop();
-					outputArea.value += '\n[Mic đã tắt]\n';
-					setTimeout(() => {
-						outputArea.scrollTop = outputArea.scrollHeight;
-					}, 10);
-				}
-				if (audioStream) {
-					audioStream.getTracks().forEach(track => track.stop());
-				}
-				micOn = false;
-				micBtn.textContent = 'Bật mic';
-				micBtn.classList.remove('bg-red-600','hover:bg-red-700');
-				micBtn.classList.add('bg-blue-600','hover:bg-blue-700');
+				stopRecording();
 			}
 		};
 
