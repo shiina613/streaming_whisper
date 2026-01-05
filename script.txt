@@ -29,7 +29,7 @@ python simulstreaming_whisper_server.py --model_path small --lan vi --task trans
 
 cd C:\Users\quang\OneDrive\Desktop\NCKH\SimulStreaming
 
-python simulstreaming_whisper_server.py --model_path tiny --lan vi --task transcribe --port 43001
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001
 
 python send_mic_to_server.py
 

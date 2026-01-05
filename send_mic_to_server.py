@@ -2,7 +2,7 @@ import socket
 import subprocess
 
 # Thông số server
-HOST = 'localhost'  # hoặc IP server nếu chạy trên máy khác
+HOST = '127.0.0.1'  # hoặc IP server nếu chạy trên máy khác
 PORT = 43001        # cổng server SimulStreaming
 
 # Lệnh ffmpeg để lấy audio từ microphone

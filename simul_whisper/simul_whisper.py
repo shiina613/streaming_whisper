@@ -30,6 +30,66 @@ import wave
 # - beam search
 # - prompt -- static vs. non-static
 # - context
+# - anti-hallucination: repetition detection, compression ratio, logprob threshold
+
+def detect_repetition(tokens: list, max_repeat_tokens: int = 3, max_repeat_ngram: int = 4) -> bool:
+    """
+    Detect if there's repetition in the token sequence that indicates hallucination.
+    
+    Args:
+        tokens: List of token ids
+        max_repeat_tokens: Max consecutive identical tokens allowed
+        max_repeat_ngram: Max repeated n-gram to detect
+    
+    Returns:
+        True if repetition detected (likely hallucination)
+    """
+    if len(tokens) < 2:
+        return False
+    
+    # Check consecutive repeated tokens (e.g., "ha ha ha ha")
+    if max_repeat_tokens > 0 and len(tokens) >= max_repeat_tokens:
+        consecutive_count = 1
+        for i in range(1, len(tokens)):
+            if tokens[i] == tokens[i-1]:
+                consecutive_count += 1
+                if consecutive_count >= max_repeat_tokens:
+                    logger.warning(f"Repetition detected: {consecutive_count} consecutive identical tokens")
+                    return True
+            else:
+                consecutive_count = 1
+    
+    # Check repeated n-grams (e.g., "thank you thank you thank you")
+    if max_repeat_ngram > 0:
+        for n in range(2, min(max_repeat_ngram + 1, len(tokens) // 2 + 1)):
+            # Check if last n tokens repeat
+            if len(tokens) >= n * 3:  # Need at least 3 repetitions
+                last_ngram = tuple(tokens[-n:])
+                repeat_count = 1
+                for i in range(len(tokens) - n - 1, -1, -n):
+                    if i >= n - 1:
+                        prev_ngram = tuple(tokens[i-n+1:i+1])
+                        if prev_ngram == last_ngram:
+                            repeat_count += 1
+                        else:
+                            break
+                if repeat_count >= 3:
+                    logger.warning(f"Repetition detected: {n}-gram repeated {repeat_count} times")
+                    return True
+    
+    return False
+
+
+def calculate_compression_ratio(text: str) -> float:
+    """Calculate compression ratio of text. High ratio indicates repetitive content."""
+    import zlib
+    if not text:
+        return 0.0
+    text_bytes = text.encode("utf-8")
+    compressed = zlib.compress(text_bytes)
+    return len(text_bytes) / len(compressed)
+
+
 class PaddedAlignAttWhisper:
     def __init__(self, cfg: AlignAttConfig) -> None:
         self.logdir_i = 0
@@ -451,6 +511,22 @@ class PaddedAlignAttWhisper:
             logger.debug(f"Decoding completed: {completed}, sum_logprobs: {sum_logprobs.tolist()}, tokens: ")
             self.debug_print_tokens(current_tokens)
 
+            # Anti-hallucination: Check for repetition in newly generated tokens
+            new_tokens_so_far = current_tokens[0, token_len_before_decoding:].tolist()
+            if detect_repetition(new_tokens_so_far, self.cfg.max_repeat_tokens, self.cfg.max_repeat_ngram):
+                logger.warning("Hallucination detected (repetition), stopping generation")
+                # Remove repeated tokens - keep only first occurrence
+                current_tokens = current_tokens[:, :token_len_before_decoding]
+                generation["hallucination_detected"] = "repetition"
+                break
+            
+            # Anti-hallucination: Check max tokens per segment
+            if hasattr(self.cfg, 'max_tokens_per_segment') and self.cfg.max_tokens_per_segment > 0:
+                if len(new_tokens_so_far) >= self.cfg.max_tokens_per_segment:
+                    logger.warning(f"Max tokens per segment ({self.cfg.max_tokens_per_segment}) reached, stopping")
+                    generation["hallucination_detected"] = "max_tokens"
+                    break
+
 
             # if self.decoder_type == "beam":
             #     logger.debug(f"Finished sequences: {self.token_decoder.finished_sequences}")
@@ -588,6 +664,28 @@ class PaddedAlignAttWhisper:
 
         ### new hypothesis
         logger.debug(f"new_hypothesis: {new_hypothesis}")
+        
+        # Anti-hallucination: Check compression ratio of output text
+        output_text = self.tokenizer.decode(new_hypothesis)
+        if self.cfg.compression_ratio_threshold > 0 and len(output_text) > 10:
+            compression_ratio = calculate_compression_ratio(output_text)
+            logger.debug(f"Compression ratio: {compression_ratio:.2f}")
+            if compression_ratio > self.cfg.compression_ratio_threshold:
+                logger.warning(f"Hallucination detected (compression ratio {compression_ratio:.2f} > {self.cfg.compression_ratio_threshold}), discarding output")
+                generation["hallucination_detected"] = "compression_ratio"
+                new_hypothesis = []
+                output_text = ""
+        
+        # Anti-hallucination: Check average logprob
+        if self.cfg.logprob_threshold > -10 and len(new_hypothesis) > 0:
+            avg_logprob = sum_logprobs[0].item() / max(len(new_hypothesis), 1)
+            logger.debug(f"Average logprob: {avg_logprob:.2f}")
+            if avg_logprob < self.cfg.logprob_threshold:
+                logger.warning(f"Hallucination detected (avg logprob {avg_logprob:.2f} < {self.cfg.logprob_threshold}), discarding output")
+                generation["hallucination_detected"] = "logprob"
+                new_hypothesis = []
+                output_text = ""
+        
         new_tokens = torch.tensor([new_hypothesis], dtype=torch.long).repeat_interleave(self.cfg.beam_size, dim=0).to(
             device=self.model.device,
         )
@@ -595,7 +693,6 @@ class PaddedAlignAttWhisper:
         # TODO: test if this is redundant or not
 #        ret = ret[ret<DEC_PAD]
 
-        output_text = self.tokenizer.decode(new_hypothesis)
         logger.info(f"Output: {output_text}")
         
         self._clean_cache()

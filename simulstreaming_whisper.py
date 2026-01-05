@@ -48,6 +48,20 @@ def simulwhisper_args(parser):
     group.add_argument("--static_init_prompt",type=str, default=None, help="Do not scroll over this text. It can contain terminology that should be relevant over all document.")
     group.add_argument("--max_context_tokens",type=int, default=None, help="Max context tokens for the model. Default is 0.")
 
+    group = parser.add_argument_group("Anti-hallucination settings")
+    group.add_argument("--nonspeech_prob", type=float, default=0.6, 
+                       help="Threshold for no_speech probability (0-1). If exceeded, skip output. Lower = more aggressive. Default: 0.6")
+    group.add_argument("--max_repeat_tokens", type=int, default=3, 
+                       help="Max consecutive repeated tokens before stopping. 0 to disable. Default: 3")
+    group.add_argument("--max_repeat_ngram", type=int, default=4, 
+                       help="Max repeated n-gram length to detect. 0 to disable. Default: 4")
+    group.add_argument("--compression_ratio_threshold", type=float, default=2.4, 
+                       help="If compression ratio exceeds this, output is discarded (likely hallucination). 0 to disable. Default: 2.4")
+    group.add_argument("--logprob_threshold", type=float, default=-1.0, 
+                       help="If average logprob is below this, output is discarded. Very negative to disable. Default: -1.0")
+    group.add_argument("--max_tokens_per_segment", type=int, default=100, 
+                       help="Max tokens per audio segment. Prevents runaway generation. Default: 100")
+
 
 def simul_asr_factory(args):
     logger.setLevel(args.log_level)
@@ -67,7 +81,10 @@ def simul_asr_factory(args):
         # else: it is greedy or beam, that's ok 
     
     a = { v:getattr(args, v) for v in ["model_path", "cif_ckpt_path", "frame_threshold", "audio_min_len", "audio_max_len", "beams", "task",
-                                       "never_fire", 'init_prompt', 'static_init_prompt', 'max_context_tokens', "logdir"
+                                       "never_fire", 'init_prompt', 'static_init_prompt', 'max_context_tokens', "logdir",
+                                       # Anti-hallucination settings
+                                       "nonspeech_prob", "max_repeat_tokens", "max_repeat_ngram", 
+                                       "compression_ratio_threshold", "logprob_threshold", "max_tokens_per_segment"
                                        ]}
     a["language"] = args.lan
     a["segment_length"] = args.min_chunk_size
@@ -86,7 +103,10 @@ class SimulWhisperASR(ASRBase):
     sep = " "
 
     def __init__(self, language, model_path, cif_ckpt_path, frame_threshold, audio_max_len, audio_min_len, segment_length, beams, task, 
-                 decoder_type, never_fire, init_prompt, static_init_prompt, max_context_tokens, logdir):
+                 decoder_type, never_fire, init_prompt, static_init_prompt, max_context_tokens, logdir,
+                 # Anti-hallucination settings
+                 nonspeech_prob=0.6, max_repeat_tokens=3, max_repeat_ngram=4,
+                 compression_ratio_threshold=2.4, logprob_threshold=-1.0, max_tokens_per_segment=100):
         cfg = AlignAttConfig(
             model_path=model_path, 
             segment_length=segment_length,
@@ -103,6 +123,13 @@ class SimulWhisperASR(ASRBase):
             max_context_tokens=max_context_tokens,
             static_init_prompt=static_init_prompt,
             logdir=logdir,
+            # Anti-hallucination settings
+            nonspeech_prob=nonspeech_prob,
+            max_repeat_tokens=max_repeat_tokens,
+            max_repeat_ngram=max_repeat_ngram,
+            compression_ratio_threshold=compression_ratio_threshold,
+            logprob_threshold=logprob_threshold,
+            max_tokens_per_segment=max_tokens_per_segment,
         )
         logger.info(f"Language: {language}")
         self.model = PaddedAlignAttWhisper(cfg)
