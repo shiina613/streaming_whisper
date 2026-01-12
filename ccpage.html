@@ -95,7 +95,15 @@
 		function connectWebSocket() {
 			ws = new WebSocket('ws://' + "127.0.0.1" + ':8765');
 			ws.onmessage = function(event) {
-				outputArea.value += event.data;
+				// Parse message: "5439 8219  Text here" -> chỉ lấy text
+				let text = event.data;
+				// Regex: bỏ 2 số đầu (timestamps) và lấy phần còn lại
+				const match = text.match(/^\d+\s+\d+\s+(.*)$/);
+				if (match) {
+					text = match[1]; // Chỉ lấy phần text sau timestamps
+				}
+				// Nối text vào output (không xuống dòng mỗi message)
+				outputArea.value += text;
 				setTimeout(() => {
 					outputArea.scrollTop = outputArea.scrollHeight;
 				}, 10);

@@ -19,17 +19,48 @@ tcp_reader = None
 tcp_writer = None
 tcp_connected = False
 broadcast_enabled = True  # Control whether to broadcast results
+read_task = None  # Task đọc kết quả từ TCP
+
+
+async def disconnect_tcp():
+    """Đóng TCP connection hiện tại"""
+    global tcp_reader, tcp_writer, tcp_connected, read_task
+    
+    tcp_connected = False
+    
+    # Cancel read task
+    if read_task:
+        read_task.cancel()
+        try:
+            await read_task
+        except asyncio.CancelledError:
+            pass
+        read_task = None
+    
+    # Đóng TCP connection
+    if tcp_writer:
+        try:
+            tcp_writer.close()
+            await tcp_writer.wait_closed()
+        except:
+            pass
+        tcp_writer = None
+    tcp_reader = None
+    print(f"[INFO] TCP connection closed")
 
 
 async def connect_to_simulstreaming():
     """Kết nối TCP tới SimulStreaming server"""
-    global tcp_reader, tcp_writer, tcp_connected
+    global tcp_reader, tcp_writer, tcp_connected, read_task
     
     for attempt in range(MAX_RETRY):
         try:
             tcp_reader, tcp_writer = await asyncio.open_connection(SIMUL_HOST, SIMUL_PORT)
             tcp_connected = True
             print(f"[OK] Connected to SimulStreaming server at {SIMUL_HOST}:{SIMUL_PORT}")
+            
+            # Khởi động task đọc kết quả từ TCP
+            read_task = asyncio.create_task(read_tcp_results())
             return True
         except ConnectionRefusedError:
             print(f"[WARNING] SimulStreaming server not available, retrying ({attempt + 1}/{MAX_RETRY})...")
@@ -38,6 +69,22 @@ async def connect_to_simulstreaming():
     print(f"[ERROR] Cannot connect to SimulStreaming server at {SIMUL_HOST}:{SIMUL_PORT}")
     print(f"[ERROR] Make sure 'python simulstreaming_whisper_server.py' is running first!")
     return False
+
+
+async def reconnect_tcp():
+    """Đóng và mở lại TCP connection để reset buffer tại SimulStreaming server"""
+    global broadcast_enabled
+    
+    broadcast_enabled = False
+    await disconnect_tcp()
+    
+    # Đợi một chút để SimulStreaming server cleanup
+    await asyncio.sleep(0.3)
+    
+    success = await connect_to_simulstreaming()
+    broadcast_enabled = True
+    
+    return success
 
 
 async def create_ffmpeg_process():
@@ -147,26 +194,21 @@ async def handler(websocket):
             # Xử lý text message (commands)
             if isinstance(message, str):
                 if message == "NEW_MEETING":
-                    # Cuộc họp mới - clear buffer cũ và tạo ffmpeg mới
-                    broadcast_enabled = False
+                    # Cuộc họp mới - reconnect TCP để reset buffer hoàn toàn tại SimulStreaming server
                     await cleanup_ffmpeg()
                     
-                    # Đợi để drain buffer từ SimulStreaming
-                    await asyncio.sleep(0.3)
-                    broadcast_enabled = True
-                    
-                    await start_ffmpeg()
-                    print(f"[INFO] New meeting started - buffer cleared")
+                    # Reconnect TCP - tạo online processor mới tại SimulStreaming server
+                    if await reconnect_tcp():
+                        await start_ffmpeg()
+                        print(f"[INFO] New meeting started - TCP reconnected, buffer fully cleared")
+                    else:
+                        await websocket.send("[ERROR] Cannot reconnect to SimulStreaming server")
+                        print(f"[ERROR] Failed to reconnect TCP for new meeting")
                     
                 elif message == "END_MEETING":
-                    # Kết thúc cuộc họp - clear tất cả
-                    broadcast_enabled = False
+                    # Kết thúc cuộc họp - cleanup ffmpeg, giữ TCP connection
                     await cleanup_ffmpeg()
-                    
-                    # Đợi để drain buffer
-                    await asyncio.sleep(0.3)
-                    broadcast_enabled = True
-                    print(f"[INFO] Meeting ended - buffer cleared")
+                    print(f"[INFO] Meeting ended")
                     
                 elif message == "MIC_ON":
                     # Bật mic - đảm bảo có ffmpeg process
@@ -203,8 +245,7 @@ async def main():
         print("[FATAL] Exiting because SimulStreaming server is not available.")
         return
     
-    # 2. Khởi động background task đọc kết quả từ TCP
-    read_task = asyncio.create_task(read_tcp_results())
+    # 2. read_task đã được tạo trong connect_to_simulstreaming()
     
     # 3. Khởi động WebSocket server
     print("=" * 60)

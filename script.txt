@@ -29,8 +29,22 @@ python simulstreaming_whisper_server.py --model_path small --lan vi --task trans
 
 cd C:\Users\quang\OneDrive\Desktop\NCKH\SimulStreaming
 
-python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
 
 python send_mic_to_server.py
 
 python websocket_server.py
+
+# Nghiêm ngặt hơn (lọc nhiều hơn)
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --nonspeech_prob 0.4 --max_repeat_tokens 2 --compression_ratio_threshold 2.0
+
+# Nhẹ hơn (cho phép nhiều hơn) 
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --nonspeech_prob 0.8 --max_repeat_tokens 4
+
+#Lệnh cơ bản
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
+
+python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 3
+
+#Xem tất cả option
+python simulstreaming_whisper_server.py -h
