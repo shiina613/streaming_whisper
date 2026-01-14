@@ -54,4 +54,6 @@ websockets
 # both Whisper and SimulWhisper. SimulWhisper requires <3
 triton>=2.0.0,<3;platform_machine=="x86_64" and sys_platform=="linux" or sys_platform=="linux2"
 
-
+# for saving meeting documents as PDF and WORD
+python-docx
+fpdf2

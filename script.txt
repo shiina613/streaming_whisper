@@ -44,7 +44,7 @@ python simulstreaming_whisper_server.py --model_path small --lan vi --task trans
 #Lệnh cơ bản
 python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
 
-python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 3
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 3
 
 #Xem tất cả option
 python simulstreaming_whisper_server.py -h
