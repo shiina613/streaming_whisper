@@ -7,6 +7,9 @@
 
 import asyncio
 import websockets
+import json
+from aiohttp import web
+from save_meeting_document import save_meeting_documents
 
 SIMUL_HOST = '127.0.0.1'
 SIMUL_PORT = 43001
@@ -237,6 +240,76 @@ async def handler(websocket):
         print(f"[INFO] WebSocket client disconnected. Total clients: {len(connected)}")
 
 
+# ==================== HTTP API HANDLERS ====================
+
+async def handle_save_document(request):
+    """Handle POST /save-document"""
+    try:
+        data = await request.json()
+        
+        meeting_info = data.get('meetingInfo', {})
+        content = data.get('content', '')
+        
+        if not meeting_info.get('meetingCode'):
+            return web.json_response({
+                'success': False,
+                'errors': ['Thiếu mã cuộc họp']
+            }, status=400)
+        
+        if not content.strip():
+            return web.json_response({
+                'success': False,
+                'errors': ['Không có nội dung để lưu']
+            }, status=400)
+        
+        # Lưu tài liệu
+        result = save_meeting_documents(meeting_info, content)
+        
+        response = {
+            'success': len(result['errors']) == 0,
+            'folder': result['folder'],
+            'word': result['word'],
+            'pdf': result['pdf'],
+            'errors': result['errors']
+        }
+        
+        return web.json_response(response)
+        
+    except json.JSONDecodeError as e:
+        return web.json_response({
+            'success': False,
+            'errors': [f'Lỗi parse JSON: {str(e)}']
+        }, status=400)
+    except Exception as e:
+        return web.json_response({
+            'success': False,
+            'errors': [f'Lỗi server: {str(e)}']
+        }, status=500)
+
+
+async def create_http_app():
+    """Tạo HTTP app với CORS support"""
+    app = web.Application()
+    
+    # CORS middleware
+    @web.middleware
+    async def cors_middleware(request, handler):
+        if request.method == 'OPTIONS':
+            response = web.Response()
+        else:
+            response = await handler(request)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
+    
+    app.middlewares.append(cors_middleware)
+    app.router.add_post('/save-document', handle_save_document)
+    app.router.add_options('/save-document', lambda r: web.Response())
+    
+    return app
+
+
 async def main():
     global tcp_connected
     
@@ -247,9 +320,17 @@ async def main():
     
     # 2. read_task đã được tạo trong connect_to_simulstreaming()
     
-    # 3. Khởi động WebSocket server
+    # 3. Khởi động HTTP API server (port 8766)
+    http_app = await create_http_app()
+    http_runner = web.AppRunner(http_app)
+    await http_runner.setup()
+    http_site = web.TCPSite(http_runner, '127.0.0.1', 8766)
+    await http_site.start()
+    
+    # 4. Khởi động WebSocket server (port 8765)
     print("=" * 60)
     print("WebSocket server started on ws://127.0.0.1:8765")
+    print("Document API server started on http://127.0.0.1:8766")
     print("Open ccpage.html in browser to start")
     print("=" * 60)
     
