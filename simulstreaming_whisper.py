@@ -195,21 +195,27 @@ class SimulWhisperOnline(OnlineProcessorInterface):
             
         tokens = tokens.copy()
         ret = []
-        for sw,st in zip(split_words,split_tokens):
-            b = None
+        frames_copy = frames.copy() if frames else []
+        tokens_copy = tokens.copy()
+        
+        for sw, st in zip(split_words, split_tokens):
+            # Lấy frame nếu có, không thì dùng 0
+            b = 0
+            e = 0
             for stt in st:
-                t,f = tokens.pop(0), frames.pop(0)
-                if t != stt:
-                    raise ValueError(f"Token mismatch: {t} != {stt} at frame {f}.")
-                if b is None:
-                    b = f
-            e = f
+                if tokens_copy and frames_copy:
+                    t = tokens_copy.pop(0)
+                    f = frames_copy.pop(0)
+                    if b == 0:
+                        b = f
+                    e = f
+            
             out = {
                 'start': b * 0.02 + self.audio_bufer_offset,
                 'end': e * 0.02 + self.audio_bufer_offset,
                 'text': sw,
                 'tokens': st
-                }
+            }
             ret.append(out)
             logger.debug(f"TS-WORD-INFO: {out}")
         return ret

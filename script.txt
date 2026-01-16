@@ -1,37 +1,7 @@
-python simulstreaming_whisper_server.py ... | findstr /R /C:"^Output:"
-
-python simulstreaming_whisper_server.py --model_path small --lan auto --task transcribe --port 43001
-
-python send_mic_to_server.py
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr /R /C:"^Output:"
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr "INFO    Output:"
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr /R /C:"^INFO    Output:"
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 | findstr "Output:"
-
+### Chỉ chạy khi gặp lỗi encode, mà không chạy cũng chả sao, cơ bản là không vấn đề 
 chcp 65001
 set PYTHONIOENCODING=utf-8
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 2>&1 | findstr "Output:"
-
-pip install fastapi uvicorn
-
-python simulstreaming_whisper_server.py --lan vi --task transcribe --port 43001
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
-
-
-
-cd C:\Users\quang\OneDrive\Desktop\NCKH\SimulStreaming
-
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
-
-python send_mic_to_server.py
+###
 
 python websocket_server.py
 
@@ -44,7 +14,526 @@ python simulstreaming_whisper_server.py --model_path small --lan vi --task trans
 #Lệnh cơ bản
 python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001
 
-python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 1
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 1
+
+# ==================== CẤU HÌNH CHO RTX 3060 Ti 8GB ====================
+# Nếu medium bị trễ, thử các phương án sau:
+
+# Phương án 1: Giảm model xuống small (KHUYẾN NGHỊ)
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 1 --vac
+
+# Phương án 2: Giữ medium nhưng tối ưu tham số
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 1 --vac --audio_max_len 3.0 --min-chunk-size 0.8 --frame_threshold 20
+
+# Phương án 3: Tốc độ tối đa (dùng base)
+python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --nonspeech_prob 0.7 --max_repeat_tokens 1 --vac --audio_max_len 3.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# So sánh Model vs VRAM vs Speed:
+# | Model  | VRAM   | Tốc độ      | Chính xác     |
+# |--------|--------|-------------|---------------|
+# | tiny   | ~1GB   | ⚡⚡⚡⚡⚡   | ⭐⭐          |
+# | base   | ~1.5GB | ⚡⚡⚡⚡     | ⭐⭐⭐        |
+# | small  | ~2.5GB | ⚡⚡⚡       | ⭐⭐⭐⭐      |
+# | medium | ~5GB   | ⚡⚡         | ⭐⭐⭐⭐⭐    |
+# =======================================================================
+
+# =======================================================================
+#              CHI TIẾT VRAM USAGE CỦA MỖI MODEL
+# =======================================================================
+#
+# CÔNG THỨC TÍNH VRAM:
+#   VRAM cần = Model Weights + Inference/Activations + Audio Buffer
+#
+# Lưu ý: Model Weights chỉ load 1 lần (chia sẻ giữa các luồng)
+#        Inference/Activations tăng theo số luồng
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ MODEL    │ File Size │ Weights │ Inference │ TỔNG 1 luồng │ Params │
+# ├─────────────────────────────────────────────────────────────────────┤
+# │ tiny     │   75 MB   │ ~150 MB │  ~850 MB  │    ~1.0 GB   │   39M  │
+# │ base     │  140 MB   │ ~280 MB │  ~1.2 GB  │    ~1.5 GB   │   74M  │
+# │ small    │  460 MB   │ ~920 MB │  ~1.6 GB  │    ~2.5 GB   │  244M  │
+# │ medium   │  1.5 GB   │ ~3.0 GB │  ~2.0 GB  │    ~5.0 GB   │  769M  │
+# │ large-v2 │  2.9 GB   │ ~5.8 GB │  ~4.2 GB  │   ~10.0 GB   │ 1550M  │
+# │ large-v3 │  2.9 GB   │ ~5.8 GB │  ~4.2 GB  │   ~10.0 GB   │ 1550M  │
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# GIẢI THÍCH:
+#   - File Size: Kích thước file .pt trên ổ cứng
+#   - Weights: Model weights khi load vào GPU (FP32 ≈ 2x file size)
+#   - Inference: Activations, attention matrices, decoder states, audio buffer
+#   - Params: Số lượng parameters của model
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │                    VRAM KHI CHẠY NHIỀU LUỒNG                        │
+# ├─────────────────────────────────────────────────────────────────────┤
+# │ MODEL    │ 1 luồng │ 2 luồng  │ 3 luồng  │ GPU khuyến nghị         │
+# ├─────────────────────────────────────────────────────────────────────┤
+# │ tiny     │  1.0 GB │  1.9 GB  │  2.7 GB  │ GTX 1650 4GB            │
+# │ base     │  1.5 GB │  2.7 GB  │  3.9 GB  │ GTX 1660 6GB            │
+# │ small    │  2.5 GB │  4.1 GB  │  5.7 GB  │ RTX 3060 Ti 8GB         │
+# │ medium   │  5.0 GB │  7.0 GB  │  9.0 GB  │ RTX 3080 10GB           │
+# │ large-v2 │ 10.0 GB │ 14.2 GB  │ 18.4 GB  │ RTX 3090/4090 24GB      │
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# CÔNG THỨC TÍNH VRAM CHO N LUỒNG:
+#   VRAM(N) = Weights + (Inference × N)
+#
+#   Ví dụ large-v2 với 2 luồng:
+#   = 5.8 GB (weights) + 4.2 GB × 2 (inference)
+#   = 5.8 + 8.4 = 14.2 GB
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │                    KHUYẾN NGHỊ THEO GPU                             │
+# ├─────────────────────────────────────────────────────────────────────┤
+# │ GPU              │ VRAM  │ 1 luồng     │ 2-3 luồng   │ 5+ luồng    │
+# ├─────────────────────────────────────────────────────────────────────┤
+# │ GTX 1650 Ti      │  4 GB │ small       │ tiny/base   │ tiny        │
+# │ RTX 3060 Ti      │  8 GB │ medium      │ small       │ base        │
+# │ RTX 3060         │ 12 GB │ large-v2    │ medium      │ small       │
+# │ RTX 4070         │ 12 GB │ large-v2    │ medium      │ small       │
+# │ RTX 3080         │ 10 GB │ large-v2*   │ small       │ base        │
+# │ RTX 3080 Ti      │ 12 GB │ large-v2    │ medium      │ small       │
+# │ RTX 4080         │ 16 GB │ large-v2    │ large-v2*   │ medium      │
+# │ RTX 3090/4090    │ 24 GB │ large-v2    │ large-v2    │ medium      │
+# └─────────────────────────────────────────────────────────────────────┘
+# * = sát giới hạn, có thể bị swap nếu dùng beams > 1
+#
+# =======================================================================
 
 #Xem tất cả option
 python simulstreaming_whisper_server.py -h
+
+python simulstreaming_whisper_server.py --model_path large-v2 --lan vi --task transcribe --port 43001 --beams 2 --vac
+================================================================================
+        HƯỚNG DẪN CÁC THAM SỐ KHI CHẠY STREAMING WHISPER
+================================================================================
+
+Dưới đây là giải thích chi tiết về các tham số và ảnh hưởng khi tăng/giảm chúng.
+
+================================================================================
+1. WHISPER MODEL ARGUMENTS
+================================================================================
+
+--model_path (mặc định: ./tiny.pt)
+    Đường dẫn đến file model Whisper (.pt)
+    
+    Các model có sẵn (từ nhỏ đến lớn):
+    - tiny.pt      : Nhỏ nhất, nhanh nhất, độ chính xác thấp nhất
+    - base.pt      : Cân bằng tốc độ/chính xác
+    - small.pt     : Chính xác hơn, chậm hơn
+    - medium.pt    : Chính xác cao, cần GPU mạnh
+    - large-v3.pt  : Chính xác nhất, cần GPU rất mạnh
+
+    ► TĂNG (dùng model lớn hơn):
+        + Độ chính xác transcript cao hơn
+        + Nhận diện tốt hơn với giọng khó, nhiều tạp âm
+        - Tốn nhiều RAM/VRAM hơn
+        - Xử lý chậm hơn, có thể gây trễ realtime
+
+    ► GIẢM (dùng model nhỏ hơn):
+        + Xử lý nhanh hơn, phù hợp realtime
+        + Tốn ít tài nguyên
+        - Độ chính xác giảm
+        - Dễ sai với từ khó, tên riêng
+
+--------------------------------------------------------------------------------
+
+--beams, -b (mặc định: 1)
+    Số lượng beam cho beam search decoding.
+    Nếu = 1: sử dụng GreedyDecoder (nhanh hơn)
+    Nếu > 1: sử dụng BeamSearchDecoder (chính xác hơn)
+
+    ► TĂNG (ví dụ: 3, 5):
+        + Độ chính xác cao hơn vì xét nhiều khả năng
+        + Tốt hơn cho câu dài, phức tạp
+        - Xử lý chậm hơn đáng kể
+        - Tốn nhiều bộ nhớ hơn
+
+    ► GIẢM về 1 (Greedy):
+        + Nhanh nhất
+        + Phù hợp realtime streaming
+        - Có thể chọn từ không tối ưu
+
+--------------------------------------------------------------------------------
+
+--decoder (mặc định: None - tự động)
+    Ghi đè lựa chọn decoder tự động.
+    Giá trị: "beam" hoặc "greedy"
+    
+    Lưu ý: Nếu beams > 1 và decoder = "greedy" → không hợp lệ!
+
+================================================================================
+2. AUDIO BUFFER ARGUMENTS
+================================================================================
+
+--audio_max_len (mặc định: 5.0 giây)
+    Độ dài tối đa của audio buffer.
+    
+    ► TĂNG (ví dụ: 10.0):
+        + Có thêm ngữ cảnh để transcript chính xác hơn
+        + Câu dài được xử lý tốt hơn
+        - Tốn nhiều bộ nhớ hơn
+        - Độ trễ tăng lên (phải đợi lâu hơn)
+        - Xử lý nặng hơn
+
+    ► GIẢM (ví dụ: 2.0):
+        + Phản hồi nhanh hơn, độ trễ thấp
+        + Tốn ít bộ nhớ
+        - Thiếu ngữ cảnh, có thể transcript sai
+        - Câu bị cắt giữa chừng
+
+--------------------------------------------------------------------------------
+
+--audio_min_len (mặc định: 0.0 giây)
+    Bỏ qua xử lý nếu audio buffer ngắn hơn giá trị này.
+    
+    ► TĂNG (ví dụ: 0.5):
+        + Tránh xử lý các đoạn audio quá ngắn, vô nghĩa
+        + Giảm tải cho CPU/GPU
+        - Có thể bỏ lỡ từ ngắn
+
+    ► GIẢM về 0:
+        + Xử lý mọi đoạn audio, không bỏ sót
+        - Có thể xử lý nhiều đoạn nhiễu vô nghĩa
+
+================================================================================
+3. ALIGNATT ARGUMENT (Attention-guided Decoding)
+================================================================================
+
+--frame_threshold (mặc định: 25 frames = 0.5 giây)
+    Ngưỡng cho attention-guided decoding.
+    AlignAtt chỉ decode đến frame này tính từ cuối audio.
+    1 frame = 0.02 giây (20ms) với model large-v3.
+
+    ► TĂNG (ví dụ: 50):
+        + An toàn hơn, ít bị sai ở cuối chunk
+        + Transcript ổn định hơn
+        - Độ trễ output tăng lên
+        - Từ cuối được emit chậm hơn
+
+    ► GIẢM (ví dụ: 10):
+        + Output nhanh hơn, độ trễ thấp
+        + Từ được emit gần như realtime
+        - Có thể sai từ ở cuối chunk
+        - Transcript không ổn định, hay thay đổi
+
+    KHUYẾN NGHỊ: 20-30 frames cho cân bằng tốc độ/chính xác
+
+================================================================================
+4. TRUNCATION OF LAST WORD (CIF Model - từ Simul-Whisper)
+================================================================================
+
+--cif_ckpt_path (mặc định: None)
+    Đường dẫn đến CIF model checkpoint.
+    CIF model phát hiện xem từ cuối có hoàn chỉnh hay không.
+    Nếu từ cuối chưa hoàn chỉnh → cắt bỏ để tránh sai.
+    
+    Tải model tại: https://github.com/backspacetg/simul_whisper/tree/main/cif_models
+    Lưu ý: Không có model cho large-v3!
+
+    ► CÓ CIF model:
+        + Tự động phát hiện từ chưa hoàn chỉnh
+        + Transcript chính xác hơn
+        - Cần thêm tài nguyên để chạy CIF
+
+    ► KHÔNG CÓ (None):
+        - Từ cuối luôn bị cắt (mặc định an toàn)
+
+--------------------------------------------------------------------------------
+
+--never_fire (mặc định: False)
+    Ghi đè CIF model.
+    
+    --never_fire (True):
+        Từ cuối KHÔNG BAO GIỜ bị cắt, bất kể CIF phát hiện gì.
+        ► Dùng khi: Muốn giữ tất cả từ, chấp nhận có thể sai.
+
+    --no-never_fire (False):
+        - Nếu có CIF model: Từ cuối CÓ THỂ bị cắt tùy CIF
+        - Nếu không có CIF: Từ cuối LUÔN bị cắt
+
+================================================================================
+5. PROMPT AND CONTEXT
+================================================================================
+
+--init_prompt (mặc định: None)
+    Prompt khởi tạo cho model. Nên viết bằng ngôn ngữ target.
+    
+    Ví dụ: --init_prompt "Đây là cuộc họp về dự án phần mềm."
+    
+    ► SỬ DỤNG:
+        + Giúp model hiểu ngữ cảnh, chủ đề
+        + Transcript thuật ngữ chuyên ngành chính xác hơn
+        + Định hướng phong cách viết
+
+    ► KHÔNG SỬ DỤNG:
+        - Model không có ngữ cảnh ban đầu
+
+--------------------------------------------------------------------------------
+
+--static_init_prompt (mặc định: None)
+    Prompt tĩnh, không bị scroll. Chứa thuật ngữ cần nhớ suốt document.
+    
+    Ví dụ: --static_init_prompt "Thuật ngữ: API, SDK, Docker, Kubernetes"
+    
+    ► SỬ DỤNG:
+        + Thuật ngữ chuyên ngành được nhận diện tốt
+        + Tên riêng, viết tắt chính xác hơn
+
+--------------------------------------------------------------------------------
+
+--max_context_tokens (mặc định: None = 0)
+    Số token context tối đa cho model.
+    
+    ► TĂNG:
+        + Nhiều ngữ cảnh hơn cho transcript
+        + Hiểu được câu dài, liên kết tốt hơn
+        - Tốn nhiều bộ nhớ và thời gian
+
+    ► GIẢM hoặc 0:
+        + Xử lý nhanh hơn
+        - Ít ngữ cảnh, có thể sai ngữ pháp
+
+================================================================================
+6. WHISPER STREAMING PROCESSOR ARGUMENTS
+================================================================================
+
+--min-chunk-size (mặc định: 1.0 giây)
+    Kích thước chunk audio tối thiểu trước khi xử lý.
+    
+    ► TĂNG (ví dụ: 2.0):
+        + Nhiều audio hơn mỗi lần xử lý → chính xác hơn
+        + Giảm số lần gọi model
+        - Độ trễ tăng lên
+
+    ► GIẢM (ví dụ: 0.5):
+        + Phản hồi nhanh hơn
+        + Output xuất hiện sớm hơn
+        - Thiếu ngữ cảnh, có thể sai
+        - Gọi model nhiều lần hơn
+
+    KHUYẾN NGHỊ: 1.0 - 2.0 giây
+
+--------------------------------------------------------------------------------
+
+--lan, --language (mặc định: "en")
+    Mã ngôn ngữ nguồn.
+    
+    Ví dụ: vi (Tiếng Việt), en (English), de (German), ja (Japanese)
+    Hoặc: auto (tự động nhận diện)
+    
+    ► CHỌN ĐÚNG NGÔN NGỮ:
+        + Transcript chính xác nhất
+        + Model tối ưu cho ngôn ngữ đó
+
+    ► DÙNG "auto":
+        + Linh hoạt, tự động nhận diện
+        - Có thể nhận sai ngôn ngữ
+        - Chậm hơn một chút
+
+--------------------------------------------------------------------------------
+
+--task (mặc định: "transcribe")
+    Nhiệm vụ: "transcribe" hoặc "translate"
+    
+    transcribe: Chuyển speech thành text cùng ngôn ngữ
+    translate: Dịch speech sang tiếng Anh
+
+--------------------------------------------------------------------------------
+
+--vac (mặc định: False)
+    Bật Voice Activity Controller (VAC).
+    Sử dụng Silero VAD để phát hiện giọng nói.
+    
+    ► BẬT (--vac):
+        + Bỏ qua đoạn im lặng, tiết kiệm xử lý
+        + Tránh transcript nhiễu
+        + KHUYẾN NGHỊ bật
+
+    ► TẮT:
+        - Xử lý cả đoạn im lặng
+        - Có thể transcript nhiễu thành text
+
+--------------------------------------------------------------------------------
+
+--vac-chunk-size (mặc định: 0.04 giây = 40ms)
+    Kích thước sample cho VAC.
+    
+    ► TĂNG:
+        + Phát hiện giọng nói ổn định hơn
+        - Phản hồi chậm hơn
+
+    ► GIẢM:
+        + Phản hồi nhanh hơn
+        - Có thể phát hiện sai
+
+================================================================================
+7. SERVER ARGUMENTS
+================================================================================
+
+--host (mặc định: 127.0.0.1)
+    Địa chỉ IP để server lắng nghe.
+    
+    127.0.0.1: Chỉ local
+    0.0.0.0: Cho phép kết nối từ bên ngoài
+
+--port (mặc định: 43001)
+    Cổng WebSocket server.
+
+--warmup-file
+    File audio WAV để "khởi động" Whisper.
+    Chunk đầu tiên sẽ được xử lý nhanh hơn.
+    
+    Ví dụ: --warmup-file jfk.wav
+
+================================================================================
+8. DEBUG/LOGGING ARGUMENTS
+================================================================================
+
+-l, --log-level (mặc định: DEBUG)
+    Mức log: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    
+    DEBUG: Hiện tất cả, chi tiết nhất
+    INFO: Thông tin chính
+    ERROR: Chỉ lỗi
+
+--logdir
+    Thư mục lưu audio segments và text để debug.
+
+================================================================================
+9. VÍ DỤ COMMAND LINE
+================================================================================
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                           MODEL: TINY (~1GB VRAM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# GTX 1650 Ti 4GB - Realtime (khuyến nghị)
+python simulstreaming_whisper_server.py --model_path tiny --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 5.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# GTX 1650 Ti 4GB - Chính xác hơn (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path tiny --lan vi --task transcribe --port 43001 --beams 3 --vac --audio_max_len 8.0 --min-chunk-size 1.5 --frame_threshold 30
+
+# RTX 3060 Ti 8GB - Realtime
+python simulstreaming_whisper_server.py --model_path tiny --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 5.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# RTX 3060 Ti 8GB - Chính xác hơn (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path tiny --lan vi --task transcribe --port 43001 --beams 5 --vac --audio_max_len 10.0 --min-chunk-size 2.0 --frame_threshold 40
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                           MODEL: BASE (~1.5GB VRAM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# GTX 1650 Ti 4GB - Realtime (khuyến nghị)
+python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 4.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# GTX 1650 Ti 4GB - Chính xác hơn (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --beams 2 --vac --audio_max_len 7.0 --min-chunk-size 1.5 --frame_threshold 30
+
+# RTX 3060 Ti 8GB - Realtime
+python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 5.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# RTX 3060 Ti 8GB - Chính xác hơn (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path base --lan vi --task transcribe --port 43001 --beams 5 --vac --audio_max_len 10.0 --min-chunk-size 2.0 --frame_threshold 40
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                           MODEL: SMALL (~2.5GB VRAM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# GTX 1650 Ti 4GB - Realtime (có thể hơi chậm do swap)
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 3.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# GTX 1650 Ti 4GB - Chính xác hơn (sẽ bị trễ do swap VRAM)
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --beams 2 --vac --audio_max_len 5.0 --min-chunk-size 1.5 --frame_threshold 30
+
+# RTX 3060 Ti 8GB - Realtime (khuyến nghị)
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 5.0 --min-chunk-size 0.8 --frame_threshold 20
+
+# RTX 3060 Ti 8GB - Chính xác hơn (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path small --lan vi --task transcribe --port 43001 --beams 3 --vac --audio_max_len 8.0 --min-chunk-size 1.5 --frame_threshold 35
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                           MODEL: MEDIUM (~5GB VRAM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# GTX 1650 Ti 4GB - Realtime (KHÔNG KHUYẾN NGHỊ - thiếu 1GB VRAM, sẽ swap nhiều)
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 3.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# GTX 1650 Ti 4GB - Chính xác (RẤT CHẬM - swap nặng)
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 5.0 --min-chunk-size 1.5 --frame_threshold 30
+
+# RTX 3060 Ti 8GB - Realtime
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 4.0 --min-chunk-size 0.8 --frame_threshold 20
+
+# RTX 3060 Ti 8GB - Chính xác hơn (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path medium --lan vi --task transcribe --port 43001 --beams 2 --vac --audio_max_len 7.0 --min-chunk-size 1.5 --frame_threshold 35
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                         MODEL: LARGE-V2/V3 (~10GB VRAM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# GTX 1650 Ti 4GB - ❌ KHÔNG THỂ CHẠY (thiếu 6GB VRAM)
+
+# RTX 3060 Ti 8GB - ❌ KHÔNG THỂ CHẠY REALTIME (thiếu 2GB VRAM)
+# Có thể chạy nhưng RẤT CHẬM do swap nặng:
+python simulstreaming_whisper_server.py --model_path large-v2 --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 3.0 --min-chunk-size 0.5 --frame_threshold 15
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                      BONUS: GPU 12GB (RTX 3060/4070)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# RTX 3060 12GB / RTX 4070 12GB - Large-v2 Realtime
+python simulstreaming_whisper_server.py --model_path large-v2 --lan vi --task transcribe --port 43001 --beams 1 --vac --audio_max_len 5.0 --min-chunk-size 0.8 --frame_threshold 20
+
+# RTX 3060 12GB / RTX 4070 12GB - Large-v2 Chính xác (chấp nhận trễ)
+python simulstreaming_whisper_server.py --model_path large-v2 --lan vi --task transcribe --port 43001 --beams 2 --vac --audio_max_len 7.0 --min-chunk-size 1.5 --frame_threshold 35
+
+# ═══════════════════════════════════════════════════════════════════════════
+#                      TÓM TẮT NHANH THEO GPU
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ┌─────────────────┬───────────────────────────────────────────────────────┐
+# │ GPU             │ Model tối ưu Realtime    │ Model tối ưu Chính xác    │
+# ├─────────────────┼───────────────────────────────────────────────────────┤
+# │ GTX 1650 Ti 4GB │ base (beams 1)           │ small (beams 1-2, trễ)    │
+# │ RTX 3060 Ti 8GB │ small (beams 1)          │ medium (beams 1-2)        │
+# │ RTX 3060 12GB   │ medium (beams 1)         │ large-v2 (beams 1-2)      │
+# │ RTX 4070 12GB   │ large-v2 (beams 1)       │ large-v2 (beams 2-3)      │
+# │ RTX 4080 16GB   │ large-v2 (beams 1-2)     │ large-v2 (beams 3-5)      │
+# │ RTX 4090 24GB   │ large-v2 (beams 3)       │ large-v2 (beams 5)        │
+# └─────────────────┴───────────────────────────────────────────────────────┘
+#
+
+================================================================================
+10. TÓM TẮT TRADE-OFF
+================================================================================
+
+┌─────────────────────────┬─────────────────────┬─────────────────────┐
+│      THAM SỐ            │     TĂNG            │     GIẢM            │
+├─────────────────────────┼─────────────────────┼─────────────────────┤
+│ model size              │ + Chính xác         │ + Nhanh             │
+│                         │ - Chậm, tốn RAM     │ - Ít chính xác      │
+├─────────────────────────┼─────────────────────┼─────────────────────┤
+│ beams                   │ + Chính xác         │ + Nhanh             │
+│                         │ - Chậm              │ - Greedy decode     │
+├─────────────────────────┼─────────────────────┼─────────────────────┤
+│ audio_max_len           │ + Nhiều context     │ + Ít trễ            │
+│                         │ - Trễ cao           │ - Thiếu context     │
+├─────────────────────────┼─────────────────────┼─────────────────────┤
+│ min-chunk-size          │ + Chính xác hơn     │ + Phản hồi nhanh    │
+│                         │ - Trễ cao           │ - Có thể sai        │
+├─────────────────────────┼─────────────────────┼─────────────────────┤
+│ frame_threshold         │ + Ổn định           │ + Output nhanh      │
+│                         │ - Trễ output        │ - Dễ sai cuối chunk │
+└─────────────────────────┴─────────────────────┴─────────────────────┘
+
+================================================================================
+
+
+
+
+###SAU TẤT CẢ 
+SAU KHI CHẠY XONG SERVER, PHẢI CHẠY PYTHON websocket_server.PY THÌ MỚI MỞ WEB RA VÀ HOẠT ĐỘNG ĐƯỢC
+
+NẾU MUỐN HIỂN THỊ MIC ĐỂ CHỌN, PHẢI BẬT THÊM SERVE_STATIC.PY HOẶC MỞ BẰNG LIVE SERVER CỦA VSCODE. 
